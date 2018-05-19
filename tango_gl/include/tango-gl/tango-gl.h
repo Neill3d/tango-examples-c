@@ -175,5 +175,10 @@ class Material {
 void Render(const StaticMesh& mesh, const Material& material,
             const Transform& transform, const Camera& camera);
 
+    void RenderTrajectory(const std::vector<glm::vec3> &points,
+                          const Material &material,
+                          const Transform &transform,
+                          const Camera &camera);
+
 }  // namespace tango_gl
 #endif  // TANGO_GL_TANGO_GL_H_

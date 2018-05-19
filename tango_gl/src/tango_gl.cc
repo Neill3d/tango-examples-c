@@ -49,6 +49,59 @@ namespace tango_gl {
 
 GLuint Material::fallback_shader_program_ = 0;
 
+    void RenderTrajectory(const std::vector<glm::vec3> &points,
+                          const Material &material,
+                          const Transform &transform,
+                          const Camera &camera)
+    {
+      glm::mat4 model_mat = transform.GetTransformationMatrix();
+      glm::mat4 view_mat = camera.GetViewMatrix();
+      glm::mat4 projection_mat = camera.GetProjectionMatrix();
+
+      glUseProgram(material.GetShaderProgram());
+
+      // Set up shader uniforms.
+      GLint uniform_mvp_mat = material.GetUniformModelViewProjMatrix();
+      if (uniform_mvp_mat != -1) {
+        glm::mat4 mvp_mat = projection_mat * view_mat * model_mat;
+        glUniformMatrix4fv(uniform_mvp_mat, 1, GL_FALSE, glm::value_ptr(mvp_mat));
+      }
+
+      GLint uniform_mv_mat = material.GetUniformModelViewMatrix();
+      if (uniform_mv_mat != -1) {
+        glm::mat4 mv_mat = view_mat * model_mat;
+        glUniformMatrix4fv(uniform_mv_mat, 1, GL_FALSE, glm::value_ptr(mv_mat));
+      }
+
+      GLint uniform_m_mat = material.GetUniformModelMatrix();
+      if (uniform_m_mat != -1) {
+        glm::mat4 m_mat = model_mat;
+        glUniformMatrix4fv(uniform_m_mat, 1, GL_FALSE, glm::value_ptr(m_mat));
+      }
+
+      GLint uniform_normal_mat = material.GetUniformNormalMatrix();
+      if (uniform_normal_mat != -1) {
+        glm::mat4 normal_mat = glm::transpose(glm::inverse(view_mat * model_mat));
+        glUniformMatrix4fv(uniform_normal_mat, 1, GL_FALSE,
+                           glm::value_ptr(normal_mat));
+      }
+
+      material.BindParams();
+
+      // Set up shader attributes.
+      GLint attrib_vertices = material.GetAttribVertices();
+      glEnableVertexAttribArray(attrib_vertices);
+      glVertexAttribPointer(attrib_vertices, 3, GL_FLOAT, GL_FALSE, 0,
+                            points.data());
+
+      glDrawArrays(GL_LINE_STRIP, 0, points.size());
+
+      glUseProgram(0);
+
+      util::CheckGlError("Render Trajectory");
+
+    }
+
 void Render(const StaticMesh& mesh, const Material& material,
             const Transform& transform, const Camera& camera) {
   glm::mat4 model_mat = transform.GetTransformationMatrix();
@@ -87,9 +140,12 @@ void Render(const StaticMesh& mesh, const Material& material,
 
   // Set up shader attributes.
   GLint attrib_vertices = material.GetAttribVertices();
-  glEnableVertexAttribArray(attrib_vertices);
-  glVertexAttribPointer(attrib_vertices, 3, GL_FLOAT, GL_FALSE, 0,
-                        mesh.vertices.data());
+    if (attrib_vertices != -1)
+    {
+        glEnableVertexAttribArray(attrib_vertices);
+        glVertexAttribPointer(attrib_vertices, 3, GL_FLOAT, GL_FALSE, 0,
+                              mesh.vertices.data());
+    }
 
   GLint attrib_normal = material.GetAttribNormals();
   if (attrib_normal != -1 && !mesh.normals.empty()) {
@@ -115,13 +171,19 @@ void Render(const StaticMesh& mesh, const Material& material,
                  mesh.indices.data());
 
   // Clean up state
-  glDisableVertexAttribArray(attrib_vertices);
+    if (attrib_vertices != -1)
+    {
+        glDisableVertexAttribArray(attrib_vertices);
+    }
   if (attrib_normal != -1) {
     glDisableVertexAttribArray(attrib_normal);
   }
   if (attrib_color != -1) {
     glDisableVertexAttribArray(attrib_color);
   }
+if (attrib_uv != -1) {
+    glDisableVertexAttribArray(attrib_uv);
+}
 
   glUseProgram(0);
 
@@ -183,7 +245,7 @@ bool Material::SetShaderInternal(GLuint program) {
   if (attrib_vertices_ == -1) {
     LOGE("Could not get vertex attribute");
     // Positions are required.
-    return false;
+    //return false;
   }
   attrib_normals_ = glGetAttribLocation(shader_program_, "normal");
   attrib_colors_ = glGetAttribLocation(shader_program_, "color");
@@ -193,7 +255,7 @@ bool Material::SetShaderInternal(GLuint program) {
   if (uniform_mvp_mat_ == -1) {
     LOGE("Could not get mvp uniform");
     // The Model-View-Projection matrix is required.
-    return false;
+    //return false;
   }
 
   uniform_mv_mat_ = glGetUniformLocation(shader_program_, "mv");

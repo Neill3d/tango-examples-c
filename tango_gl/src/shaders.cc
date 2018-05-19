@@ -61,6 +61,31 @@ std::string GetTexturedFragmentShader() {
          "}\n";
 }
 
+    std::string GetScreenVertexShader() {
+        return "precision highp float;\n"
+                "precision highp int;\n"
+                "attribute vec4 vertex;\n"
+                "attribute vec2 uv;\n"
+                "varying vec2 f_textureCoords;\n"
+                "uniform mat4 mvp;\n"
+                "void main() {\n"
+                "  f_textureCoords = vec2(uv.x, 1.0-uv.y);\n"
+                "  gl_Position = mvp * vertex;\n"
+                //"gl_Position =  vec4(2.0 * uv.x - 1.0, 2.0 * uv.y - 1.0, 0.0, 1.0);"
+                "}\n";
+    }
+
+    std::string GetScreenFragmentShader() {
+        return "precision highp float;\n"
+                "precision highp int;\n"
+                "uniform sampler2D texture;\n"
+                "varying vec2 f_textureCoords;\n"
+                "void main() {\n"
+                " vec4 color = texture2D(texture, f_textureCoords);\n"
+                "  gl_FragColor = vec4(color.r, color.g, color.b, 1.0);\n"
+                "}\n";
+    }
+
 std::string GetColorVertexShader() {
   return "precision mediump float;\n"
          "precision mediump int;\n"

@@ -42,6 +42,9 @@ Texture::Texture(GLuint texture_id, GLenum texture_target) {
 }
 
 Texture::Texture(AAssetManager* mgr, const char* file_path) {
+
+  texture_id_ = 0;
+
   AAsset* asset = AAssetManager_open(mgr, file_path, AASSET_MODE_STREAMING);
   if (asset == NULL) {
     LOGE("Error opening asset %s", file_path);
@@ -60,11 +63,16 @@ Texture::Texture(AAssetManager* mgr, const char* file_path) {
 }
 
 Texture::Texture(const char* file_path) {
-  FILE* file = fopen(file_path, "rb");
-  if (!LoadFromPNG(file)) {
-    LOGE("Texture initialing error");
+
+  texture_id_ = 0;
+
+  if (nullptr != file_path) {
+    FILE *file = fopen(file_path, "rb");
+    if (!LoadFromPNG(file)) {
+      LOGE("Texture initialing error");
+    }
+    fclose(file);
   }
-  fclose(file);
 }
 
 bool Texture::LoadFromPNG(FILE* file) {
@@ -121,5 +129,184 @@ bool Texture::LoadFromPNG(FILE* file) {
 GLuint Texture::GetTextureID() const { return texture_id_; }
 
 GLuint Texture::GetTextureTarget() const { return texture_target_; }
+
+
+    void DynamicTexture::Allocate(int w, int h)
+    {
+      FreeResources();
+
+      glGenTextures(1, &texture_id_);
+
+      unsigned int imageSize = w*h / 2;
+      unsigned char *data = new unsigned char[imageSize];
+      memset(data, 255, sizeof(char) * imageSize);
+
+      glBindTexture(GL_TEXTURE_2D, texture_id_);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+      glCompressedTexImage2D(GL_TEXTURE_2D, 0, compressInternalFormat, w, h, 0, imageSize, data);
+      //glTexImage2D(GL_TEXTURE_2D, 0, mCompressionFormat, w, h, 0, GL_RGB, mCompressionType, nullptr);
+      glBindTexture(GL_TEXTURE_2D, 0);
+
+      util::CheckGlError("glCompressedTexImage2D");
+
+      if (data)
+      {
+        delete [] data;
+        data = nullptr;
+      }
+
+
+    }
+
+    void DynamicTexture::SwapPBO()
+    {
+        curPBO = 1 - curPBO;
+    }
+
+    void DynamicTexture::UpdateSimple(int internalFormat, int w, int h, const unsigned char *data,
+                                      const unsigned int size)
+    {
+        if (size > 0 && nullptr != data) {
+
+            if (w > 1 && h > 1 && w <= 2048 && h <= 2048) {
+
+
+                if (0 == texture_id_ || width_ != w || height_ != h || compressInternalFormat != internalFormat
+                    || size != mLastSize)
+                {
+                    compressInternalFormat = internalFormat;
+                    width_ = w;
+                    height_ = h;
+                    mLastSize = size;
+
+                    FreeResources();
+                    glGenTextures(1, &texture_id_);
+
+                    glBindTexture(GL_TEXTURE_2D, texture_id_);
+
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+                    LOGI("compress internal format - %d, size - %d", compressInternalFormat, size);
+
+                    glCompressedTexImage2D(GL_TEXTURE_2D, 0, compressInternalFormat, (GLsizei) width_,
+                                           (GLsizei) height_, 0, size, data);
+
+                    glBindTexture(GL_TEXTURE_2D, 0);
+
+                    util::CheckGlError("glCompressedTexImage2D");
+
+                } else {
+
+                    glBindTexture(GL_TEXTURE_2D, texture_id_);
+
+                    glCompressedTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei) width_, (GLsizei) height_,
+                                              compressInternalFormat, size, data);
+
+                    glBindTexture(GL_TEXTURE_2D, 0);
+
+                    util::CheckGlError("glCompressedTexSubImage2D");
+
+                    SwapPBO();
+                }
+            }
+
+        }
+    }
+
+    // update texture from an incoming network packet
+    void DynamicTexture::Update(int internalFormat, int w, int h, const unsigned char *data, const unsigned int size)
+    {
+
+      if (size > 0 && nullptr != data) {
+
+        if (w > 1 && h > 1 && w <= 2048 && h <= 2048) {
+
+          unsigned int imageSize = size;
+          const unsigned char *ptr = data;
+
+          if (0 == texture_id_ || width_ != w || height_ != h || compressInternalFormat != internalFormat
+                  || size != mLastSize)
+          {
+            compressInternalFormat = internalFormat;
+            width_ = w;
+            height_ = h;
+              mLastSize = size;
+
+              glPixelStorei(GL_UNPACK_ALIGNMENT, 4);      // 4-byte pixel alignment
+
+              if (pbo[0] > 0)
+                  glDeleteBuffers(2, pbo);
+              glGenBuffers(2, pbo);
+
+              // create 2 pixel buffer objects, you need to delete them when program exits.
+              // glBufferDataARB with NULL pointer reserves only memory space.
+              for (int i=0; i<2; ++i)
+              {
+                  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[i]);
+                  glBufferData(GL_PIXEL_UNPACK_BUFFER, imageSize, 0, GL_STREAM_DRAW);
+              }
+              glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
+            FreeResources();
+            glGenTextures(1, &texture_id_);
+
+            glBindTexture(GL_TEXTURE_2D, texture_id_);
+
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+            //LOGI("compress internal format - %d", compressInternalFormat);
+
+            //glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[1-curPBO]);
+            glCompressedTexImage2D(GL_TEXTURE_2D, 0, compressInternalFormat, (GLsizei) width_,
+                                   (GLsizei) height_, 0, imageSize, 0);
+            //glTexImage2D(GL_TEXTURE_2D, 0, mCompressionFormat, w, h, 0, GL_RGB, mCompressionType, nullptr);
+            //glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            util::CheckGlError("glCompressedTexImage2D");
+
+              // bind current pbo for app->pbo transfer
+              glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[curPBO]);
+              GLubyte *gpuptr = (GLubyte*) glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, imageSize,
+                                                            GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT );
+              memcpy(gpuptr, ptr, imageSize);
+              glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+
+              SwapPBO();
+          } else {
+
+              // bind current pbo for app->pbo transfer
+              glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[curPBO]);
+              GLubyte *gpuptr = (GLubyte*) glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, imageSize,
+                                                            GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT );
+              memcpy(gpuptr, ptr, imageSize);
+              glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+
+            glBindTexture(GL_TEXTURE_2D, texture_id_);
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[1-curPBO]);
+            glCompressedTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei) width_, (GLsizei) height_,
+                                      compressInternalFormat, imageSize, 0);
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+              util::CheckGlError("glCompressedTexSubImage2D");
+
+              SwapPBO();
+          }
+        }
+
+      }
+    }
 
 }  // namespace tango_gl
