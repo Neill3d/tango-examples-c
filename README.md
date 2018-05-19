@@ -1,4 +1,15 @@
-Project Tango C API Example Projects
+Virtual Camera Tracker For Project Tango
+===========================================
+
+Project has been developed in Android Studio 3. To communicate with MotionBuilder, you need a Tango Device plugin (OpenMoBu repository - https://github.com/Neill3d/OpenMoBu)
+
+[![tango-examples-c](https://github.com/Neill3d/tango-examples-c/blob/master/virtual_camera_tracker/images/photo1.jpg)]()
+
+Video Example
+
+https://youtu.be/WpLeU2rrf_Y
+
+Project Based On Tango C API Example Projects
 ===========================================
 Copyright 2014 Google Inc.
 
